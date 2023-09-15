@@ -1,0 +1,94 @@
+---
+title: "Research Replicability Assignment"
+author: "Stephen Ogbodo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	library(tidyverse),
+	library(descr))
+```
+
+
+Study Aim: To determine if immigrants in Canada commute for longer to work than non-immigrants.
+
+Data: Canadian 2016 census.
+
+
+# Import dataset
+```{r}
+dat<- read_csv("C://Users//ogbod//Documents//R//CAnD3//pumf-98M0001-E-2016-individuals_F1.csv")
+```
+
+
+#Clean dataset
+```{r}
+dat1<- dat |>
+  select(AGEGRP, TotInc, HDGREE, IMMSTAT, PWDUR, POWST, PR) |>
+  mutate(age=as.factor(AGEGRP), inc=TotInc, edu=as.factor(HDGREE), commute_time=PWDUR, province=as.factor(PR), empl=as.factor(POWST), imm_stat=IMMSTAT) |>
+  filter(age!=88) |> #remove age = "not available"
+  filter(inc!=88888888 & inc!=99999999) |> #remove net income = "not available/applicable"
+  filter(edu!=88 &edu!=99) |> #remove education = "not available/applicable"
+  filter(commute_time!=8 &edu!=9) |> #remove commute time = "not available/applicable"
+  mutate(commute_time = commute_time*15) |> #since commute time categories correspond to 15 minute increments, convert into minutes
+  filter(empl!=1 &empl!=3 &empl!=8 & empl!=9) |> #remove all persons without employment (8,9) or who worked from home(1) or outside Canada(3)
+  filter(imm_stat!=8) |> #remove immigrant status not available
+  mutate(imm_status= ifelse(imm_stat==1, "Non-immigrant", "Immigrant")) |>
+  select(-c(AGEGRP, TotInc, HDGREE, IMMSTAT, PWDUR, POWST, PR, imm_stat)) #delete redundant variables
+```
+
+
+#Name the provinces
+```{r}
+dat1<- dat1|>
+  mutate(province = case_when(province==10~"Newfoundland and Labrador",
+                              province==11~"Prince Edward Island",
+                              province==12~"Nova Scotia",
+                              province==13~"New Brunswick",
+                              province==24~"Quebec",
+                              province==35~"Ontario",
+                              province==46~"Manitoba",
+                              province==47~"Saskatchewan",
+                              province==48~"Alberta",
+                              province==59~"British Columbia",
+                              province==70~"Northern Canada"))
+```
+
+
+#DESCRIPTIVE STATS
+
+##1. Immigrant percentage (working age) by province/territory
+```{r}
+dat1 |>
+  group_by(province) |>
+  summarise(percent_immigrants = ((sum(imm_status=="Immigrant"))/((sum(imm_status=="Immigrant"))+(sum(imm_status=="Non-immigrant")))*100)) |>
+  ungroup()
+
+freq(dat1$imm_status, plot=F)
+
+```
+
+
+##2. Average commute time by immigration status
+```{r}
+dat1 |>
+  group_by(imm_status)|>
+  summarise(avg_commute = mean(commute_time))
+```
+
+On average, immigrants commute for 7 minutes more than non-immigrants in Canada. This is before accounting for potential confounders like educational attainment, income level and province. The regression analysis below controls for these factors.
+
+
+# MULTIVARIATE LINEAR REGRESSION
+
+```{r}
+mod<- lm(commute_time ~ imm_status+age+inc+edu+province+empl, data=dat1)
+summary(mod)
+```
+
+Conclusion: Controlling for other factors, immigrants in Canada commute for 5 minutes more than non-immigrants on average, and this is statistically significant.
